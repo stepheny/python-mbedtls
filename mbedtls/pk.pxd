@@ -253,12 +253,16 @@ cdef extern from "mbedtls/ecdsa.h":
 
 cdef extern from "mbedtls/rsa.h":
     ctypedef struct mbedtls_rsa_context:
-        pass
+        int padding
+        int hash_id
 
     # mbedtls_rsa_context
     # -------------------
     # mbedtls_rsa_init
-    # mbedtls_rsa_set_padding
+    void mbedtls_rsa_set_padding(
+        mbedtls_rsa_context *ctx,
+        int padding,
+        int hash_id)
     int mbedtls_rsa_gen_key(
         mbedtls_rsa_context *ctx,
         int (*f_rng)(void *, unsigned char *, size_t), void *p_rng,

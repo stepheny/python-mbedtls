@@ -506,6 +506,14 @@ cdef class RSA(CipherBase):
         """
         return cls(key)
 
+    property padding:
+        def __get__(self):
+            return _pk.mbedtls_pk_rsa(self._ctx).padding
+
+        def __set__(self, int padding):
+            cdef mbedtls_rsa_context *rsa = _pk.mbedtls_pk_rsa(self._ctx)
+            _pk.mbedtls_rsa_set_padding(rsa, padding, rsa.hash_id)
+
     def _has_private(self):
         """Return `True` if the key contains a valid private half."""
         return _pk.mbedtls_rsa_check_privkey(_pk.mbedtls_pk_rsa(self._ctx)) == 0
