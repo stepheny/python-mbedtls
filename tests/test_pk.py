@@ -1,7 +1,6 @@
 """Unit tests for mbedtls.pk."""
 
 import numbers
-import random
 from itertools import product
 from functools import partial
 from tempfile import TemporaryFile
@@ -149,11 +148,10 @@ class TestRSA(_TestCipherBase):
         return self.cipher.generate(key_size)
 
     @pytest.mark.usefixtures("key")
-    @pytest.mark.parametrize("padding", random.sample(range(1024), 12))
-    def test_padding(self, padding):
-        assert self.cipher.padding == 0
-        self.cipher.padding = padding
-        assert self.cipher.padding == padding
+    @pytest.mark.parametrize("padding_mode", PaddingMode)
+    def test_padding_mode(self, padding_mode):
+        self.cipher.padding_mode = padding_mode
+        assert self.cipher.padding_mode == padding_mode
 
     @pytest.mark.usefixtures("key")
     def test_encrypt_decrypt(self, randbytes):
@@ -161,9 +159,10 @@ class TestRSA(_TestCipherBase):
         assert self.cipher.decrypt(self.cipher.encrypt(msg)) == msg
 
     @pytest.mark.usefixtures("key")
-    def test_encrypt_decrypt_with_padding(self, randbytes):
+    @pytest.mark.parametrize("padding_mode", PaddingMode)
+    def test_encrypt_decrypt_with_padding_mode(self, randbytes, padding_mode):
         msg = randbytes(self.cipher.key_size - 11)
-        self.cipher.padding = 128
+        self.cipher.padding_mode = padding_mode
 
         enc = self.cipher.encrypt(msg)
         assert len(enc) == 128

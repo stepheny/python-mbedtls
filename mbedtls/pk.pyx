@@ -40,7 +40,7 @@ import mbedtls.hash as _hash
 
 __all__ = ("check_pair", "get_supported_ciphers", "get_supported_curves",
            "Curve", "RSA", "ECC", "DHServer", "DHClient",
-           "ECDHServer", "ECDHClient")
+           "ECDHServer", "ECDHClient", "PaddingMode")
 
 
 CIPHER_NAME = (
@@ -62,6 +62,12 @@ class CipherType(enum.Enum):
     ECDSA = _pk.MBEDTLS_PK_ECDSA
     RSA_ALT = _pk.MBEDTLS_PK_RSA_ALT
     RSASSA_PSS = _pk.MBEDTLS_PK_RSASSA_PSS
+
+
+class PaddingMode(enum.Enum):
+    PKCS1_V1_5 = 0  # MBEDTLS_RSA_PKCS_V15
+    PKCS1_V2_1 = 1  # MBEDTLS_RSA_PKCS_V21
+    PKCS1_OAEP = 1
 
 
 KeyPair = namedtuple("KeyPair", ["private", "public"])
@@ -506,13 +512,15 @@ cdef class RSA(CipherBase):
         """
         return cls(key)
 
-    property padding:
-        def __get__(self):
-            return _pk.mbedtls_pk_rsa(self._ctx).padding
+    @property
+    def padding_mode(self):
+        return PaddingMode(_pk.mbedtls_pk_rsa(self._ctx).padding)
 
-        def __set__(self, int padding):
-            cdef mbedtls_rsa_context *rsa = _pk.mbedtls_pk_rsa(self._ctx)
-            _pk.mbedtls_rsa_set_padding(rsa, padding, rsa.hash_id)
+    @padding_mode.setter
+    def padding_mode(self, padding_mode):
+        padding = PaddingMode(padding_mode)
+        cdef mbedtls_rsa_context *rsa = _pk.mbedtls_pk_rsa(self._ctx)
+        _pk.mbedtls_rsa_set_padding(rsa, padding.value, rsa.hash_id)
 
     def _has_private(self):
         """Return `True` if the key contains a valid private half."""

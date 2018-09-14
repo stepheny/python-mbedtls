@@ -1,3 +1,7 @@
+[next]
+
+* Add accessors to RSA padding mode.
+
 [0.12.2] - 2018-09-10
 
 Misc.
