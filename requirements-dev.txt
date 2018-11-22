@@ -1,0 +1,5 @@
+Cython==0.28.5
+detox==0.15
+setuptools==40.4.3
+tox==3.5.2
+twine==1.12.1

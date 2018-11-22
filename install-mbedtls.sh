@@ -24,17 +24,20 @@ fi
 
 license="apache"
 name="mbedtls"
-url="https://tls.mbed.org/download/$name-$version-$license.tgz"
-src="$destdir/_src"
+filename="$name-$version-$license.tgz"
+url="https://tls.mbed.org/download/$filename"
+src="$destdir/src"
 
 mkdir -p "$src"
-wget -qO - "$url" | tar xz -C "$src" --strip-components 1
+curl -O "$url"
+tar xzf "$filename" -C "$src" --strip-components 1
 
 mkdir -p "$destdir"
 cd "$src"
 cmake . \
 	-DCMAKE_INSTALL_PREFIX=$destdir \
 	-DENABLE_TESTING=OFF \
-	-DUSE_SHARED_MBEDTLS_LIBRARY=ON
+	-DUSE_SHARED_MBEDTLS_LIBRARY=ON \
+	-DUSE_STATIC_MBEDTLS_LIBRARY=OFF
 make -j4
 make install
