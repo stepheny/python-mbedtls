@@ -7,144 +7,91 @@ version: 2
 jobs:
   build:
     docker:
-      - image: circleci/python:3.4.9-jessie
+      - image: quay.io/pypa/manylinux1_x86_64
     working_directory: ~/python-mbedtls
     steps:
       - checkout
       - run:
-          name: install pyenv
-          command: |
-            git clone https://github.com/pyenv/pyenv.git $HOME/python-mbedtls/.pyenv
-            cat << 'EOF' >> $BASH_ENV
-            export PYENV_ROOT="$HOME/python-mbedtls/.pyenv"
-            export PATH="$PYENV_ROOT/bin:$PATH"
-            EOF
-
-      - restore_cache:
-          keys:
-            - py27-v2-{{ arch }}-2.7.15
-      - run:
-          name: install python 2.7
-          command: |
-            if [ ! -d ".pyenv/versions/2.7.15" ]; then
-              eval "$(pyenv init -)"
-              pyenv install 2.7.15
-            fi
-      - save_cache:
-          key: py27-v2-{{ arch }}-2.7.15
-          paths:
-            - .pyenv/versions/2.7.15
-
-      - restore_cache:
-          keys:
-            - py34-v2-{{ arch }}-3.4.9
-      - run:
-          name: install python 3.4
-          command: |
-            if [ ! -d ".pyenv/versions/3.4.9" ]; then
-              eval "$(pyenv init -)"
-              pyenv install 3.4.9
-            fi
-      - save_cache:
-          key: py34-v2-{{ arch }}-3.4.9
-          paths:
-            - .pyenv/versions/3.4.9
-
-      - restore_cache:
-          keys:
-            - py35-v2-{{ arch }}-3.5.6
-      - run:
-          name: install python 3.5
-          command: |
-            if [ ! -d ".pyenv/versions/3.5.6" ]; then
-              eval "$(pyenv init -)"
-              pyenv install 3.5.6
-            fi
-      - save_cache:
-          key: py35-v2-{{ arch }}-3.5.6
-          paths:
-            - .pyenv/versions/3.5.6
-
-      - restore_cache:
-          keys:
-            - py36-v2-{{ arch }}-3.6.6
-      - run:
-          name: install python 3.6
-          command: |
-            if [ ! -d ".pyenv/versions/3.6.6" ]; then
-              eval "$(pyenv init -)"
-              pyenv install 3.6.6
-            fi
-      - save_cache:
-          key: py36-v2-{{ arch }}-3.6.6
-          paths:
-            - .pyenv/versions/3.6.6
-
-      - run:
-          name: setup environment
+          name: Setup environment
           command: |
             cat << 'EOF' >> $BASH_ENV
-            export VERSION=2.4.2
-            export DESTDIR=$HOME/lib/mbedtls-$VERSION
-            export LIBRARY_PATH=$DESTDIR/lib
-            export LD_LIBRARY_PATH=$DESTDIR/lib
-            export C_INCLUDE_PATH=$DESTDIR/include
+            _bin="/opt/python/cp36-cp36m/bin"
+            pip="$_bin/python -m pip"
+            tox="$_bin/python -m tox"
             EOF
       - run:
-          name: install mbedtls
+          name: Install mbedtls
           command: |
-            echo 'deb http://deb.debian.org/debian jessie-backports main' |\
-              sudo tee /etc/apt/sources.list.d/backports.list
-            sudo apt-get update
-            sudo apt-get install libmbedtls-dev
-
-      - restore_cache:
-          keys:
-            - py-deps-3.4-{{ checksum "requirements-tests.txt" }}
+            yum -yq install wget cmake
+            ./install-mbedtls.sh 2.7.0 /usr/local
+            # FIXME: 2.7.2 rejects CRLs with unsupported critical extensions.
+            #        I need to replace the canned certificate.
       - run:
-          name: install environment
+          name: Install dev environment
           command: |
-            python -m venv venv
-            . venv/bin/activate
-            pip install -r requirements-tests.txt
-      - save_cache:
-          key: py-deps-3.4-{{ checksum "requirements-tests.txt" }}
-          paths:
-            - venv
-
+            $pip install -r requirements-dev.txt
       - run:
-          name: run tests
+          name: Test Python 2.7 wide unicode
           command: |
-            eval "$(pyenv init -)"
-            pyenv shell 2.7.15 3.4.9 3.5.6 3.6.6
-            . venv/bin/activate
-            detox -e py27 -e py34 -e py35 -e py36
-            tox -e doctest
-            tox -e readme
-
+            version="cp27-cp27mu"
+            PATH="/opt/python/$version/bin:$PATH"
+            python setup.py bdist_wheel 1> /dev/null
+            auditwheel repair dist/*$version*.whl
+            $tox -e py27 --installpkg wheelhouse/*$version*.whl
+      - run:
+          name: Test Python 3.4
+          command: |
+            version="cp34-cp34m"
+            PATH="/opt/python/$version/bin:$PATH"
+            python setup.py bdist_wheel 1> /dev/null
+            auditwheel repair dist/*$version*.whl
+            $tox -e py34 --installpkg wheelhouse/*$version*.whl
+      - run:
+          name: Test Python 3.5
+          command: |
+            version="cp35-cp35m"
+            PATH="/opt/python/$version/bin:$PATH"
+            python setup.py bdist_wheel 1> /dev/null
+            auditwheel repair dist/*$version*.whl
+            $tox -e py35 --installpkg wheelhouse/*$version*.whl
+      - run:
+          name: Test Python 3.6
+          command: |
+            version="cp36-cp36m"
+            PATH="/opt/python/$version/bin:$PATH"
+            python setup.py bdist_wheel 1> /dev/null
+            auditwheel repair dist/*$version*.whl
+            $tox -e py36 --installpkg wheelhouse/*$version*.whl
+      - run:
+          name: Test Python 3.7
+          command: |
+            version="cp37-cp37m"
+            PATH="/opt/python/$version/bin:$PATH"
+            python setup.py bdist_wheel 1> /dev/null
+            auditwheel repair dist/*$version*.whl
+            $tox -e py37 --installpkg wheelhouse/*$version*.whl
       - deploy:
           name: Distribute
           command: |
-            . venv/bin/activate
-            python setup.py sdist
-            mkdir -p out/dist
-            cp dist/* out/dist
-
+            ls dist/*
+            ls wheelhouse/*
+            # XXX Make sdist as well!
             if [ "$CIRCLE_BRANCH" = "master" ]; then
               echo "[pypi]" > $HOME/.pypirc
               echo "username = Synss" >> $HOME/.pypirc
               echo "password = $PYPI_PASSWORD" >> $HOME/.pypirc
-              twine upload dist/*
+              twine upload wheelhouse/*
             fi
           when: on_success
-
       - run:
-          name: save logs
+          name: Save logs
           command: |
-            mkdir -p out/log
-            cp .tox/*/log/py*.log out/log || true
+            mkdir -p logs
+            cp .tox/*/log/py*.log logs || true
           when: on_fail
-
       - store_artifacts:
-          path: out
+          path: logs
           destination: artifacts
+      - store_artifacts:
+          path: wheelhouse
+          destination: wheelhouse
