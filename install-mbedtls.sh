@@ -3,11 +3,12 @@
 
 set -ex
 
-if [ $# -ne 3 ] && [ -n "$2" ]; then
+if [ $# -eq 1 ] || [ $# -eq 2 ]; then
 	version="$1"
-	case $2 in
-		/*) destdir=$2;;
-		*) destdir=$PWD/$2;;
+	destdir="${2:-/usr/local}"
+	case $destdir in
+		/*) ;;
+		*) destdir="$PWD/$destdir";;
 	esac
 else
 	cat <<-EOF
