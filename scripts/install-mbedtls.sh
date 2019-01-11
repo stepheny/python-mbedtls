@@ -33,14 +33,15 @@ mkdir -p "$src"
 curl -O "$url"
 tar xzf "$filename" -C "$src" --strip-components 1
 
-mkdir -p "$destdir"
 cd "$src"
 mkdir build
 cd build
+export CFLAGS="-DMBEDTLS_DEPRECATED_REMOVED"
 cmake .. \
 	-DCMAKE_INSTALL_PREFIX=$destdir \
 	-DENABLE_TESTING=OFF \
+	-DENABLE_PROGRAMS=OFF \
 	-DUSE_SHARED_MBEDTLS_LIBRARY=ON \
 	-DUSE_STATIC_MBEDTLS_LIBRARY=OFF
 make -j
-make -j install
+make -j install 1> /dev/null

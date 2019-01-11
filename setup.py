@@ -12,6 +12,11 @@ if "--with-coverage" in sys.argv:
 else:
     COVERAGE = False
 
+if os.environ.get("MBEDTLS_CHECK_PARAMS", None):
+    CHECK_PARAMS = True
+else:
+    CHECK_PARAMS = False
+
 
 setup_requires = [
     # Setuptools 18.0 properly handles Cython extensions.
@@ -37,13 +42,16 @@ if sys.version_info < (3, ):
     ])
 
 
-def extensions(coverage=False):
+def extensions(coverage=False, check_params=False):
     for dirpath, dirnames, filenames in os.walk("src"):
         for fn in filenames:
             root, ext = os.path.splitext(fn)
             if ext != ".pyx":
                 continue
             mod = ".".join(dirpath.split(os.sep)[1:] + [root])
+            libraries = ["mbedcrypto", "mbedtls", "mbedx509"]
+            if check_params:
+                libraries.append("pf")
             extension = Extension(
                 mod,
                 [os.path.join(dirpath, fn)],
@@ -51,7 +59,7 @@ def extensions(coverage=False):
                     os.environ.get("LD_LIBRARY_PATH", ""),
                     os.environ.get("DYLD_LIBRARY_PATH", ""),
                 ],
-                libraries=["mbedcrypto", "mbedtls", "mbedx509"],
+                libraries=libraries,
                 define_macros=[
                     ("CYTHON_TRACE", "1"),
                     ("CYTHON_TRACE_NOGIL", "1")
@@ -88,7 +96,7 @@ setup(
     license="MIT License",
     url="https://github.com/Synss/python-mbedtls",
     download_url=download_url,
-    ext_modules=list(extensions(COVERAGE)),
+    ext_modules=list(extensions(COVERAGE, CHECK_PARAMS)),
     options=options(COVERAGE),
     package_dir={"": "src"},
     packages=find_packages("src"),

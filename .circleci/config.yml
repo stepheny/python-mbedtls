@@ -83,16 +83,13 @@ jobs:
       - run:
           name: install mbedtls
           command: |
-            VERSION=2.14.1
-            DESTDIR=$HOME/lib/$VERSION
+            VERSION=2.16.0
             sudo apt-get install cmake
-            sudo ./scripts/install-mbedtls.sh $VERSION $DESTDIR
-            cat << EOF >> $BASH_ENV
-            export VERSION=$VERSION
-            export DESTDIR=$DESTDIR
-            export LD_LIBRARY_PATH=$DESTDIR/lib
-            export C_INCLUDE_PATH=$DESTDIR/include
-            EOF
+            echo 'export MBEDTLS_CHECK_PARAMS=""' >> $BASH_ENV
+            export CFLAGS="-DMBEDTLS_CHECK_PARAMS"
+            sudo --preserve-env ./scripts/install-mbedtls.sh $VERSION
+            gcc -c -o libpf.so -fPIC extras/param_failed.c
+            sudo cp libpf.so /usr/local/lib
 
       - run:
           name: Create environment
