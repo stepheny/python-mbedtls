@@ -705,10 +705,8 @@ cdef class DTLSConfiguration(_BaseConfiguration):
             return
         _tls.mbedtls_ssl_conf_dtls_cookies(
             &self._ctx,
-            # _tls.mbedtls_ssl_cookie_write,
-            # _tls.mbedtls_ssl_cookie_check,
-            NULL,
-            NULL,
+            _tls.mbedtls_ssl_cookie_write,
+            _tls.mbedtls_ssl_cookie_check,
             &self._cookie._ctx,
         )
 
