@@ -702,13 +702,19 @@ cdef class DTLSConfiguration(_BaseConfiguration):
         """Register callbacks for DTLS cookies (server only)."""
         self._cookie = cookie
         if cookie is None:
-            return
-        _tls.mbedtls_ssl_conf_dtls_cookies(
-            &self._ctx,
-            _tls.mbedtls_ssl_cookie_write,
-            _tls.mbedtls_ssl_cookie_check,
-            &self._cookie._ctx,
-        )
+            _tls.mbedtls_ssl_conf_dtls_cookies(
+                &self._ctx,
+                NULL,
+                NULL,
+                NULL,
+            )
+        else:
+            _tls.mbedtls_ssl_conf_dtls_cookies(
+                &self._ctx,
+                _tls.mbedtls_ssl_cookie_write,
+                _tls.mbedtls_ssl_cookie_check,
+                &self._cookie._ctx,
+            )
 
     @property
     def cookie(self):
