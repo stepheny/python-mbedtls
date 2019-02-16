@@ -37,16 +37,6 @@ def block(callback, *args, **kwargs):
             raise RuntimeError("maximum recursion depth exceeded.")
 
 
-def recvall(callback, amt):
-    data = bytearray()
-    while len(data) != amt:
-        buffer = block(callback, amt - len(data))
-        if not buffer:
-            break
-        data.extend(buffer)
-    return bytes(data)
-
-
 class Chain:
     @pytest.fixture(scope="class")
     def now(self):
@@ -298,8 +288,6 @@ class TestServerContext(TestBaseContext):
 
 
 class _TestCommunicationBase(Chain):
-    HEADER_FMT = "H"
-    HEADER_SIZE = struct.calcsize(HEADER_FMT)
     CLOSE_MESSAGE = b"bye"
 
     @pytest.fixture(scope="class")
@@ -356,7 +344,7 @@ class _TestCommunicationBase(Chain):
                 dump.write(buffer)
 
 class TestTLSCommunication(_TestCommunicationBase):
-    @pytest.fixture(scope="class", params=TLSVersion)
+    @pytest.fixture(scope="class", params=[TLSVersion.TLSv1_2])
     def version(self, request):
         return request.param
 
@@ -390,16 +378,11 @@ class TestTLSCommunication(_TestCommunicationBase):
             conn, addr = sock.accept()
             block(conn.do_handshake)
             while True:
-                header = recvall(conn.recv, self.HEADER_SIZE)
-                try:
-                    length = struct.unpack(self.HEADER_FMT, header)[0]
-                except struct.error:
-                    continue
-                data = recvall(conn.recv, length)
+                data = block(conn.recv, 20 * 1024)
                 if data == self.CLOSE_MESSAGE:
                     break
-                conn.sendall(struct.pack(self.HEADER_FMT, length))
-                conn.sendall(data)
+                amt = block(conn.send, data)
+                assert len(data) == amt
 
         runner = mp.Process(target=echo, args=(sock, ))
         runner.start()
@@ -426,8 +409,6 @@ class TestTLSCommunication(_TestCommunicationBase):
         block(sock.do_handshake)
         yield sock
         with suppress(Exception):
-            block(sock.send,
-                struct.pack(self.HEADER_FMT, len(self.CLOSE_MESSAGE)))
             block(sock.send, self.CLOSE_MESSAGE)
         sock.close()
 
@@ -441,30 +422,15 @@ class TestTLSCommunication(_TestCommunicationBase):
         with pytest.raises(TLSError):
             block(sock.do_handshake)
 
-    @pytest.mark.parametrize("step", (10, 100, 1000, 10000, 16384 - 1, 16384))
+    @pytest.mark.parametrize("step", [10, 100, 1000, 10000, 16384 - 1])
     def test_client_server(self, client, buffer, step):
         received = bytearray()
         for idx in range(0, len(buffer), step):
             view = memoryview(buffer[idx:idx + step])
-            # `length` must not be `step` if `idx + step` is larger
-            # than the buffer.
-            # 1. Send buffer.
-            length = len(view)
-            amt = block(client.send, struct.pack(self.HEADER_FMT, length))
-            assert amt == self.HEADER_SIZE
             amt = block(client.send, view)
             assert amt == len(view)
-            # 2. Get echo.
-            header = recvall(client.recv, self.HEADER_SIZE)
-            try:
-                echo_length = struct.unpack(self.HEADER_FMT, header)[0]
-            except struct.error:
-                continue
-            assert echo_length == length
-            echo = recvall(client.recv, echo_length)
-            assert echo == view
-            received.extend(echo)
-        assert received == buffer
+            data = block(client.recv, 20 * 1024)
+            assert data == view
 
 
 class TestDTLSCommunication(_TestCommunicationBase):

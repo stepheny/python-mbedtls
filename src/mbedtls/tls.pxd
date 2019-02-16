@@ -439,7 +439,7 @@ cdef class ServerContext(_BaseContext):
 
 cdef enum:
     # 16K (tls default)
-    TLS_BUFFER_CAPACITY = 16384
+    TLS_BUFFER_CAPACITY = 16384 + 1024
 
 
 cdef class TLSWrappedBuffer:
