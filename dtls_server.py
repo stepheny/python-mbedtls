@@ -83,7 +83,7 @@ def echo_until(sock, end):
     print(" .", "accepted", cli, cli_address)
 
     cli.connect(cli_address)
-    cli.do_handshake()
+    block(cli.do_handshake)
     print(" .", "handshake", cli.negotiated_tls_version())
 
     while True:

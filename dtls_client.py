@@ -43,7 +43,7 @@ def block(cb, *args, **kwargs):
             return result
 
 
-cli.do_handshake()
+block(cli.do_handshake)
 print(" .", "handshake", cli.negotiated_tls_version())
 
 msg = b"hello"
