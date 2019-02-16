@@ -290,6 +290,17 @@ class TestServerContext(TestBaseContext):
 class _TestCommunicationBase(Chain):
     CLOSE_MESSAGE = b"bye"
 
+    @pytest.fixture(params=[False])
+    def buffer(self, request, randbytes):
+        buffer = randbytes(5 * 16 * 1024)
+        yield buffer
+        if request.node.rep_call.failed and request.param:
+            with open(
+                "/tmp/dump.%s" % dt.datetime.utcnow().isoformat(),
+                "wb",
+            ) as dump:
+                dump.write(buffer)
+
     @pytest.fixture(scope="class")
     def trust_store(self, ca0_crt):
         store = TrustStore()
@@ -297,6 +308,14 @@ class _TestCommunicationBase(Chain):
         # XXX if there is an ownership problem.
         store.add(CRT.from_DER(ca0_crt.to_DER()))
         return store
+
+    @pytest.fixture(scope="class")
+    def version(self):
+        raise NotImplementedError
+
+    @pytest.fixture
+    def address(self):
+        raise NotImplementedError
 
     @pytest.fixture(scope="class")
     def srv_conf(self):
@@ -309,18 +328,6 @@ class _TestCommunicationBase(Chain):
         assert srv_conf.certificate_chain == ((ee0_crt, ca1_crt), ee0_key)
 
     @pytest.fixture(scope="class")
-    def version(self):
-        raise NotImplementedError
-
-    @pytest.fixture
-    def address(self):
-        raise NotImplementedError
-
-    @pytest.fixture
-    def server(self, srv_conf, address, version):
-        raise NotImplementedError
-
-    @pytest.fixture(scope="class")
     def cli_conf(self):
         raise NotImplementedError
 
@@ -329,22 +336,51 @@ class _TestCommunicationBase(Chain):
         assert cli_conf.validate_certificates == True
 
     @pytest.fixture
-    def client(self, server, cli_conf, address):
-        raise NotImplementedError
+    def server(self, srv_conf, address, version):
+        ctx = ServerContext(srv_conf)
+        sock = ctx.wrap_socket(
+            socket.socket(socket.AF_INET, self.proto))
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(address)
+        if self.proto == socket.SOCK_STREAM:
+            sock.listen(1)
 
-    @pytest.fixture(params=[False])
-    def buffer(self, request, randbytes):
-        buffer = randbytes(5 * 16 * 1024)
-        yield buffer
-        if request.node.rep_call.failed and request.param:
-            with open(
-                "/tmp/dump.%s" % dt.datetime.utcnow().isoformat(),
-                "wb",
-            ) as dump:
-                dump.write(buffer)
+        def echo(sock):
+            conn, addr = sock.accept()
+            block(conn.do_handshake)
+            while True:
+                data = block(conn.recv, 20 * 1024)
+                if data == self.CLOSE_MESSAGE:
+                    break
+                amt = block(conn.send, data)
+                assert len(data) == amt
+
+        runner = mp.Process(target=echo, args=(sock, ))
+        runner.start()
+        yield sock
+        runner.join(0.1)
+        sock.close()
+        runner.terminate()
+
+    @pytest.fixture
+    def client(self, server, cli_conf, address):
+        ctx = ClientContext(cli_conf)
+        sock = ctx.wrap_socket(
+            socket.socket(socket.AF_INET, self.proto),
+            server_hostname="End Entity")
+        sock.connect(address)
+        block(sock.do_handshake)
+        yield sock
+        with suppress(Exception):
+            block(sock.send, self.CLOSE_MESSAGE)
+        sock.close()
+
 
 class TestTLSCommunication(_TestCommunicationBase):
-    @pytest.fixture(scope="class", params=[TLSVersion.TLSv1_2])
+    proto = socket.SOCK_STREAM
+
+    # XXX TLSVersion!
+    @pytest.fixture(scope="class", params=[TLSVersion.TLSv1_1])
     def version(self, request):
         return request.param
 
@@ -365,32 +401,6 @@ class TestTLSCommunication(_TestCommunicationBase):
             highest_supported_version=version,
             validate_certificates=False)
 
-    @pytest.fixture
-    def server(self, srv_conf, address, version):
-        ctx = ServerContext(srv_conf)
-        sock = ctx.wrap_socket(
-            socket.socket(socket.AF_INET, socket.SOCK_STREAM))
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(address)
-        sock.listen(1)
-
-        def echo(sock):
-            conn, addr = sock.accept()
-            block(conn.do_handshake)
-            while True:
-                data = block(conn.recv, 20 * 1024)
-                if data == self.CLOSE_MESSAGE:
-                    break
-                amt = block(conn.send, data)
-                assert len(data) == amt
-
-        runner = mp.Process(target=echo, args=(sock, ))
-        runner.start()
-        yield sock
-        runner.join(0.1)
-        sock.close()
-        runner.terminate()
-
     @pytest.fixture(scope="class")
     def cli_conf(self, version, trust_store):
         return TLSConfiguration(
@@ -399,24 +409,11 @@ class TestTLSCommunication(_TestCommunicationBase):
             highest_supported_version=version,
             validate_certificates=True)
 
-    @pytest.fixture
-    def client(self, server, cli_conf, address):
-        ctx = ClientContext(cli_conf)
-        sock = ctx.wrap_socket(
-            socket.socket(socket.AF_INET, socket.SOCK_STREAM),
-            server_hostname="End Entity")
-        sock.connect(address)
-        block(sock.do_handshake)
-        yield sock
-        with suppress(Exception):
-            block(sock.send, self.CLOSE_MESSAGE)
-        sock.close()
-
     def test_server_hostname_fails_verification(
             self, server, cli_conf, address):
         ctx = ClientContext(cli_conf)
         sock = ctx.wrap_socket(
-            socket.socket(socket.AF_INET, socket.SOCK_STREAM),
+            socket.socket(socket.AF_INET, self.proto),
             server_hostname="Wrong End Entity")
         sock.connect(address)
         with pytest.raises(TLSError):
@@ -434,13 +431,18 @@ class TestTLSCommunication(_TestCommunicationBase):
 
 
 class TestDTLSCommunication(_TestCommunicationBase):
+    proto = socket.SOCK_DGRAM
+
     @pytest.fixture(scope="class", params=DTLSVersion)
     def version(self, request):
         return request.param
 
     @pytest.fixture
     def address(self):
-        return "127.0.0.1", 4433
+        return (
+            "127.0.0.1",
+            4400 + 10 * sys.version_info[0] + sys.version_info[1],
+        )
 
     @pytest.fixture(scope="class")
     def srv_conf(
@@ -455,40 +457,6 @@ class TestDTLSCommunication(_TestCommunicationBase):
             highest_supported_version=version,
             validate_certificates=False)
 
-    @pytest.fixture
-    def server(self, srv_conf, address, version):
-        ctx = ServerContext(srv_conf)
-        sock = ctx.wrap_socket(
-            socket.socket(
-                socket.AF_INET,
-                socket.SOCK_DGRAM,
-                socket.IPPROTO_UDP,
-            )
-        )
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(address)
-
-        def echo(sock):
-            cli, cli_address = sock.accept()
-            cli = sock
-            cli.connect(cli_address)
-            block(sock.do_handshake)
-            while True:
-                header, addr = recvall(sock.recvfrom, self.HEADER_SIZE)
-                length = struct.unpack(self.HEADER_FMT, header)[0]
-                data, addr = recvall(sock.recvfrom, length)
-                if data == self.CLOSE_MESSAGE:
-                    break
-                sock.sendto(struct.pack(self.HEADER_FMT, length), addr)
-                sock.sendto(data, addr)
-
-        runner = mp.Process(target=echo, args=(sock, ))
-        runner.start()
-        yield sock
-        runner.join(0.1)
-        sock.close()
-        runner.terminate()
-
     @pytest.fixture(scope="class")
     def cli_conf(self, version, trust_store):
         return DTLSConfiguration(
@@ -497,36 +465,12 @@ class TestDTLSCommunication(_TestCommunicationBase):
             highest_supported_version=version,
             validate_certificates=True)
 
-    @pytest.fixture
-    def client(self, server, cli_conf, address):
-        ctx = ClientContext(cli_conf)
-        sock = ctx.wrap_socket(
-            socket.socket(socket.AF_INET, socket.SOCK_DGRAM),
-            server_hostname="End Entity")
-        sock.connect(address)
-        block(sock.do_handshake)
-        yield sock
-        with suppress(Exception):
-            block(partial(sock.sendto, address=address),
-                  struct.pack(self.HEADER_FMT, len(self.CLOSE_MESSAGE)))
-            block(partial(sock.sendto, address=address), self.CLOSE_MESSAGE)
-        sock.close()
-
-    @pytest.mark.skip("XXX")
     @pytest.mark.parametrize("step", (1000, ))
     def test_client_server(self, client, address, buffer, step):
         reveived = bytearray()
         for idx in range(0, len(buffer), step):
             view = memoryview(buffer[idx:idx + step])
-            # 1. Send buffer.
-            length = len(view)
-            amt = block(partial(client.sendto, address=address),
-                        struct.pack(self.HEADER_FMT, length))
-            assert amt == self.HEADER_SIZE
-            amt = block(partial(client.sendto, address=address), view)
+            amt = block(client.send, view)
             assert amt == len(view)
-            # 2. Get echo.
-            header = recvall(client.recvfrom, echo_length)
-            assert echo == view
-            received.extend(echo)
-        assert received == buffer
+            data = block(client.recv, 20 * 2014)
+            assert data == view

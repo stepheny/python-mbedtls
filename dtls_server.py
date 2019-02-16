@@ -70,7 +70,7 @@ conf = DTLSConfiguration(
     trust_store=trust_store,
     certificate_chain=([ee0_crt, ca1_crt], ee0_key),
     validate_certificates=False,
-    cookie=cookie,
+    # cookie=cookie,
 )
 
 _enable_debug_output(conf)
