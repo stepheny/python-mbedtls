@@ -68,8 +68,6 @@ cdef int buffer_write(void *ctx, const unsigned char *buf, size_t len) nogil:
 cdef int buffer_read(void *ctx, unsigned char *buf, const size_t len) nogil:
     """Copy internal buffer to `buf`."""
     c_ctx = <_rb.ring_buffer_ctx *>ctx
-    if _rb.c_len(c_ctx) > len:
-        return _tls.MBEDTLS_ERR_SSL_BUFFER_TOO_SMALL
     return _rb.c_readinto(c_ctx, buf, len)
 
 
