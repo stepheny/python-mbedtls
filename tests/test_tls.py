@@ -379,8 +379,7 @@ class _TestCommunicationBase(Chain):
 class TestTLSCommunication(_TestCommunicationBase):
     proto = socket.SOCK_STREAM
 
-    # XXX TLSVersion!
-    @pytest.fixture(scope="class", params=[TLSVersion.TLSv1_1])
+    @pytest.fixture(scope="class", params=TLSVersion)
     def version(self, request):
         return request.param
 
