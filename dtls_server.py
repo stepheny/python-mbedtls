@@ -70,20 +70,31 @@ conf = DTLSConfiguration(
     trust_store=trust_store,
     certificate_chain=([ee0_crt, ca1_crt], ee0_key),
     validate_certificates=False,
-    # cookie=cookie,
+    cookie=cookie,
 )
 
 _enable_debug_output(conf)
 _set_debug_level(1)
 
 def echo_until(sock, end):
-    print(" .", "accept")
-    cli, cli_address = sock.accept()
-    ctx._set_client_id(cli_address[0].encode("ascii"))
-    print(" .", "accepted", cli, cli_address)
+    while True:
+        print(" .", "accept")
+        cli, cli_address = sock.accept()
+        print(" .", "accepted", cli, cli_address)
 
-    cli.connect(cli_address)
-    block(cli.do_handshake)
+        cli.connect(cli_address)
+        assert cli.context is sock.context
+        cli.context._set_client_id(cli_address[0].encode("ascii"))
+        print(cli.context._client_id)
+        try:
+            block(cli.do_handshake)
+        except HelloVerifyRequest:
+            sock.close()
+            sock = cli
+            continue
+        else:
+            break
+
     print(" .", "handshake", cli.negotiated_tls_version())
 
     while True:

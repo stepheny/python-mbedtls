@@ -190,6 +190,10 @@ class RaggedEOF(TLSError):
     pass
 
 
+class HelloVerifyRequest(TLSError):
+    pass
+
+
 class TrustStore(abc.Sequence):
     def __init__(self, db=None):
         if db is None:
@@ -927,8 +931,9 @@ cdef class _BaseContext:
             raise WantReadError()
         elif ret == _tls.MBEDTLS_ERR_SSL_WANT_WRITE:
             raise WantWriteError()
-        # elif ret == _tls.MBEDTLS_ERR_SSL_HELLO_VERIFY_REQUIRED:
-        #     self._reset()
+        elif ret == _tls.MBEDTLS_ERR_SSL_HELLO_VERIFY_REQUIRED:
+            self._reset()
+            raise HelloVerifyRequest()
         else:
             assert ret < 0
             self._reset()
@@ -1036,6 +1041,17 @@ cdef class ServerContext(_BaseContext):
             &info[0],
             info.size,
         )
+
+    @property
+    def _client_id(self):
+        """Client ID for the Hello Verify Request.
+
+        Notes:
+            DTLS only.
+
+        """
+        client_id = bytes(self._ctx.cli_id[0:self._ctx.cli_id_len])
+        return client_id if client_id else None
 
 
 cdef class TLSWrappedBuffer:
@@ -1192,7 +1208,8 @@ cdef class TLSWrappedSocket:
             self._socket.setsockopt(
                 _socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1
             )
-            self._socket.bind(conn.getsockname())
+            # XXX
+            # self._socket.bind(conn.getsockname())
         return self.context.wrap_socket(conn), address
 
     def bind(self, address):

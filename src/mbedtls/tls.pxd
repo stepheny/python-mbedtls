@@ -169,6 +169,8 @@ cdef extern from "mbedtls/ssl.h" nogil:
         const mbedtls_ssl_config *conf
         int state
         char *hostname
+        unsigned char *cli_id
+        size_t cli_id_len
 
     # Callback types
     # --------------
