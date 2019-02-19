@@ -413,8 +413,7 @@ class TestTLSCommunication(_TestCommunicationBase):
         with pytest.raises(TLSError):
             block(sock.do_handshake)
 
-    # @pytest.mark.parametrize("step", [10, 100, 1000, 10000, 16384 - 1])
-    @pytest.mark.parametrize("step", [1000])
+    @pytest.mark.parametrize("step", [10, 100, 1000, 10000, 16384 - 1])
     def test_client_server(self, client, buffer, step):
         received = bytearray()
         for idx in range(0, len(buffer), step):
@@ -453,7 +452,7 @@ class TestDTLSCommunication(_TestCommunicationBase):
             highest_supported_version=version,
             validate_certificates=True)
 
-    @pytest.mark.parametrize("step", [1000])
+    @pytest.mark.parametrize("step", [10, 100, 1000, 5000])
     def test_client_server(self, client, address, buffer, step):
         reveived = bytearray()
         for idx in range(0, len(buffer), step):
