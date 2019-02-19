@@ -1034,8 +1034,7 @@ cdef class ServerContext(_BaseContext):
         # PEP 543
         return TLSWrappedBuffer(self)
 
-    def _set_client_id(self, const unsigned char[:] info):
-        # XXX DTLS only, server only: move to DTLSConfiguration
+    def _setcookieparam(self, const unsigned char[:] info):
         _tls.mbedtls_ssl_set_client_transport_id(
             &self._ctx,
             &info[0],
@@ -1043,8 +1042,8 @@ cdef class ServerContext(_BaseContext):
         )
 
     @property
-    def _client_id(self):
-        """Client ID for the Hello Verify Request.
+    def _cookieparam(self):
+        """Client ID for the HelloVerifyRequest.
 
         Notes:
             DTLS only.
@@ -1090,7 +1089,7 @@ cdef class TLSWrappedBuffer:
 
     def write(self, const unsigned char[:] buffer):
         # PEP 543
-        assert self._buffer.empty()
+        assert self._buffer.empty(), "%i bytes in buffer" % len(self._buffer)
         amt = self.context._write(buffer)
         assert amt == buffer.size
         return len(self._buffer)
@@ -1101,6 +1100,9 @@ cdef class TLSWrappedBuffer:
     def do_handshake(self):
         # PEP 543
         self.context._do_handshake()
+
+    def _setcookieparam(self, param):
+        self.context._setcookieparam(param)
 
     def cipher(self):
         # PEP 543
@@ -1193,23 +1195,17 @@ cdef class TLSWrappedSocket:
         else:
             data, address = self._socket.recvfrom(1, _socket.MSG_PEEK)
             assert data, "no data"
-            self._socket.connect(address)
 
             # Use this socket to communicate with the client and bind
             # another one for the next connection.  This procedure is
             # adapted from `mbedtls_net_accept()`.
-            conn = _socket.fromfd(
-                self.fileno(), self.family, self.type
-            )
-            self._socket.close()
-            self._socket = _socket.socket(
-                self.family, self.type, self.proto
-            )
-            self._socket.setsockopt(
-                _socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1
-            )
-            # XXX
-            # self._socket.bind(conn.getsockname())
+            sockname = self.getsockname()
+            conn = _socket.fromfd(self.fileno(), self.family, self.type)
+            conn.connect(address)
+            self.close()
+            self._socket = _socket.socket(self.family, self.type, self.proto)
+            self.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+            self.bind(sockname)
         return self.context.wrap_socket(conn), address
 
     def bind(self, address):
@@ -1324,6 +1320,9 @@ cdef class TLSWrappedSocket:
         self._as_bio()
         self._buffer.do_handshake()
         self._buffer._as_bio()
+
+    def setcookieparam(self, param):
+        self._buffer._setcookieparam(param)
 
     def cipher(self):
         return self._buffer.cipher()

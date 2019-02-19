@@ -77,24 +77,16 @@ _enable_debug_output(conf)
 _set_debug_level(1)
 
 def echo_until(sock, end):
-    while True:
-        print(" .", "accept")
-        cli, cli_address = sock.accept()
-        print(" .", "accepted", cli, cli_address)
+    cli, cli_address = sock.accept()
+    cli.setcookieparam(cli_address[0].encode("ascii"))
+    try:
+        block(cli.do_handshake)
+    except HelloVerifyRequest:
+        print("HVR")
 
-        cli.connect(cli_address)
-        assert cli.context is sock.context
-        cli.context._set_client_id(cli_address[0].encode("ascii"))
-        print(cli.context._client_id)
-        try:
-            block(cli.do_handshake)
-        except HelloVerifyRequest:
-            sock.close()
-            sock = cli
-            continue
-        else:
-            break
-
+    cli, cli_address = cli.accept()
+    cli.setcookieparam(cli_address[0].encode("ascii"))
+    block(cli.do_handshake)
     print(" .", "handshake", cli.negotiated_tls_version())
 
     while True:
@@ -108,6 +100,7 @@ def echo_until(sock, end):
     print(" .", "done")
     print(cli)
     cli.close()
+
 
 address = ("0.0.0.0", 4433)
 host, port = address

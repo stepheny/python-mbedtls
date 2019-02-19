@@ -54,21 +54,13 @@ class Chain:
 
     @pytest.fixture(scope="class")
     def ca1_key(self):
-        # if version < TLSVersion.TLSv1_1:
-        #     ca1_key = RSA()
-        # else:
-        #     ca1_key = ECC()
-        ca1_key = ECC()
+        ca1_key = RSA()
         ca1_key.generate()
         return ca1_key
 
     @pytest.fixture(scope="class")
     def ee0_key(self):
-        # if version < TLSVersion.TLSv1_1:
-        #     ee0_key = RSA()
-        # else:
-        #     ee0_key = ECC()
-        ee0_key = ECC()
+        ee0_key = RSA()
         ee0_key.generate()
         return ee0_key
 
@@ -379,7 +371,12 @@ class _TestCommunicationBase(Chain):
 class TestTLSCommunication(_TestCommunicationBase):
     proto = socket.SOCK_STREAM
 
-    @pytest.fixture(scope="class", params=TLSVersion)
+    @pytest.fixture(scope="class",
+                    params=[
+                        # TLSVersion.TLSv1,
+                        TLSVersion.TLSv1_1,
+                        TLSVersion.TLSv1_2,
+                    ])
     def version(self, request):
         return request.param
 
@@ -418,7 +415,8 @@ class TestTLSCommunication(_TestCommunicationBase):
         with pytest.raises(TLSError):
             block(sock.do_handshake)
 
-    @pytest.mark.parametrize("step", [10, 100, 1000, 10000, 16384 - 1])
+    # @pytest.mark.parametrize("step", [10, 100, 1000, 10000, 16384 - 1])
+    @pytest.mark.parametrize("step", [1000])
     def test_client_server(self, client, buffer, step):
         received = bytearray()
         for idx in range(0, len(buffer), step):
@@ -464,7 +462,7 @@ class TestDTLSCommunication(_TestCommunicationBase):
             highest_supported_version=version,
             validate_certificates=True)
 
-    @pytest.mark.parametrize("step", (1000, ))
+    @pytest.mark.parametrize("step", [1000])
     def test_client_server(self, client, address, buffer, step):
         reveived = bytearray()
         for idx in range(0, len(buffer), step):
