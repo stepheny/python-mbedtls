@@ -1,6 +1,7 @@
 import datetime as dt
 import multiprocessing as mp
 import os
+import random
 import socket
 import struct
 import sys
@@ -307,7 +308,8 @@ class _TestCommunicationBase(Chain):
 
     @pytest.fixture
     def address(self):
-        raise NotImplementedError
+        random.seed(sys.version)
+        return "127.0.0.1", random.randrange(60000, 65000)
 
     @pytest.fixture(scope="class")
     def srv_conf(self):
@@ -380,10 +382,6 @@ class TestTLSCommunication(_TestCommunicationBase):
     def version(self, request):
         return request.param
 
-    @pytest.fixture
-    def address(self, tmpdir):
-        return "127.0.0.1", 4433
-
     @pytest.fixture(scope="class")
     def srv_conf(
             self,
@@ -433,13 +431,6 @@ class TestDTLSCommunication(_TestCommunicationBase):
     @pytest.fixture(scope="class", params=DTLSVersion)
     def version(self, request):
         return request.param
-
-    @pytest.fixture
-    def address(self):
-        return (
-            "127.0.0.1",
-            4400 + 10 * sys.version_info[0] + sys.version_info[1],
-        )
 
     @pytest.fixture(scope="class")
     def srv_conf(
