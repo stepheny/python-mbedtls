@@ -297,9 +297,7 @@ class _TestCommunicationBase(Chain):
     @pytest.fixture(scope="class")
     def trust_store(self, ca0_crt):
         store = TrustStore()
-        # XXX pass ca0_crt? or copy in `store.add()`
-        # XXX if there is an ownership problem.
-        store.add(CRT.from_DER(ca0_crt.to_DER()))
+        store.add(ca0_crt)
         return store
 
     @pytest.fixture(scope="class")
