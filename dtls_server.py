@@ -77,17 +77,19 @@ _enable_debug_output(conf)
 _set_debug_level(1)
 
 def echo_until(sock, end):
-    cli, cli_address = sock.accept()
-    cli.setcookieparam(cli_address[0].encode("ascii"))
+    cli0, cli_address0 = sock.accept()
+    cli0.setcookieparam(cli_address0[0].encode("ascii"))
     try:
-        block(cli.do_handshake)
+        block(cli0.do_handshake)
     except HelloVerifyRequest:
         print("HVR")
 
-    cli, cli_address = cli.accept()
-    cli.setcookieparam(cli_address[0].encode("ascii"))
-    block(cli.do_handshake)
-    print(" .", "handshake", cli.negotiated_tls_version())
+    cli1, cli_address1 = cli0.accept()
+    cli1.setcookieparam(cli_address1[0].encode("ascii"))
+    block(cli1.do_handshake)
+    print(" .", "handshake", cli1.negotiated_tls_version())
+
+    cli = cli1
 
     while True:
         data, addr = block(cli.recvfrom, 4096)
