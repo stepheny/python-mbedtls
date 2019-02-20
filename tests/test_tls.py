@@ -308,7 +308,6 @@ class _TestCommunicationBase(Chain):
 
     @pytest.fixture
     def address(self):
-        random.seed(sys.version)
         return "127.0.0.1", random.randrange(60000, 65000)
 
     @pytest.fixture(scope="class")
