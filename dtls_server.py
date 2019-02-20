@@ -51,7 +51,7 @@ with open("ca0.crt", "wt") as ca:
     ca.write(ca0_crt.to_PEM())
 
 trust_store = TrustStore()
-trust_store.add(CRT.from_DER(ca0_crt.to_DER()))
+trust_store.add(ca0_crt)
 
 def block(cb, *args, **kwargs):
     while True:
