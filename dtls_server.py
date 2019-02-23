@@ -64,13 +64,10 @@ def block(cb, *args, **kwargs):
             return result
 
 
-cookie = DTLSCookie()
-cookie.generate()
 conf = DTLSConfiguration(
     trust_store=trust_store,
     certificate_chain=([ee0_crt, ca1_crt], ee0_key),
     validate_certificates=False,
-    cookie=cookie,
 )
 
 _enable_debug_output(conf)
@@ -85,6 +82,7 @@ def echo_until(sock, end):
         print("HVR")
 
     cli1, cli_address1 = cli0.accept()
+    cli0.close()
     cli1.setcookieparam(cli_address1[0].encode("ascii"))
     block(cli1.do_handshake)
     print(" .", "handshake", cli1.negotiated_tls_version())
@@ -92,8 +90,8 @@ def echo_until(sock, end):
     cli = cli1
 
     while True:
-        data, addr = block(cli.recvfrom, 4096)
-        print(" .", "R", data, addr)
+        data = block(cli.recv, 4096)
+        print(" .", "R", data)
         nn = block(cli.send, data)
         print(" .", "S", nn, len(data))
         if data == end:

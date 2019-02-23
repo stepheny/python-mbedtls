@@ -18,6 +18,7 @@ import mbedtls.hash as hashlib
 from mbedtls.exceptions import TLSError
 from mbedtls.pk import RSA, ECC
 from mbedtls.x509 import BasicConstraints, CRT, CSR
+from mbedtls.tls import _DTLSCookie as DTLSCookie
 from mbedtls.tls import *
 
 
@@ -127,6 +128,9 @@ class TestDTLSCookie:
     @pytest.fixture
     def cookie(self):
         return DTLSCookie()
+
+    def test_generate_does_not_raise(self, cookie):
+        cookie.generate()
 
     def test_timeout(self, cookie):
         assert cookie.timeout == 60
@@ -283,6 +287,25 @@ class TestServerContext(TestBaseContext):
 class _TestCommunicationBase(Chain):
     CLOSE_MESSAGE = b"bye"
 
+    @pytest.fixture(scope="class")
+    def version(self):
+        raise NotImplementedError
+
+    @pytest.fixture(scope="class")
+    def srv_conf(self):
+        raise NotImplementedError
+
+    @pytest.fixture(scope="class")
+    def cli_conf(self):
+        raise NotImplementedError
+
+    @pytest.fixture
+    def step(self):
+        raise NotImplementedError
+
+    def echo(self, sock):
+        raise NotImplementedError
+
     @pytest.fixture(params=[False])
     def buffer(self, request, randbytes):
         buffer = randbytes(5 * 16 * 1024)
@@ -294,37 +317,15 @@ class _TestCommunicationBase(Chain):
             ) as dump:
                 dump.write(buffer)
 
-    @pytest.fixture(scope="class")
-    def trust_store(self, ca0_crt):
-        store = TrustStore()
-        store.add(ca0_crt)
-        return store
-
-    @pytest.fixture(scope="class")
-    def version(self):
-        raise NotImplementedError
-
     @pytest.fixture
     def address(self):
         return "127.0.0.1", random.randrange(60000, 65000)
 
     @pytest.fixture(scope="class")
-    def srv_conf(self):
-        raise NotImplementedError
-
-    def test_srv_conf(self, srv_conf, ca1_crt, ee0_crt, ee0_key, trust_store):
-        assert srv_conf.trust_store == trust_store
-        assert srv_conf.certificate_chain[0] == (ee0_crt, ca1_crt)
-        assert srv_conf.certificate_chain[1] == ee0_key
-        assert srv_conf.certificate_chain == ((ee0_crt, ca1_crt), ee0_key)
-
-    @pytest.fixture(scope="class")
-    def cli_conf(self):
-        raise NotImplementedError
-
-    def test_cli_conf(self, cli_conf, trust_store):
-        assert cli_conf.trust_store == trust_store
-        assert cli_conf.validate_certificates == True
+    def trust_store(self, ca0_crt):
+        store = TrustStore()
+        store.add(ca0_crt)
+        return store
 
     @pytest.fixture
     def server(self, srv_conf, address, version):
@@ -336,17 +337,7 @@ class _TestCommunicationBase(Chain):
         if self.proto == socket.SOCK_STREAM:
             sock.listen(1)
 
-        def echo(sock):
-            conn, addr = sock.accept()
-            block(conn.do_handshake)
-            while True:
-                data = block(conn.recv, 20 * 1024)
-                if data == self.CLOSE_MESSAGE:
-                    break
-                amt = block(conn.send, data)
-                assert len(data) == amt
-
-        runner = mp.Process(target=echo, args=(sock, ))
+        runner = mp.Process(target=self.echo, args=(sock, ))
         runner.start()
         yield sock
         runner.join(0.1)
@@ -365,6 +356,16 @@ class _TestCommunicationBase(Chain):
         with suppress(Exception):
             block(sock.send, self.CLOSE_MESSAGE)
         sock.close()
+
+    def test_srv_conf(self, srv_conf, ca1_crt, ee0_crt, ee0_key, trust_store):
+        assert srv_conf.trust_store == trust_store
+        assert srv_conf.certificate_chain[0] == (ee0_crt, ca1_crt)
+        assert srv_conf.certificate_chain[1] == ee0_key
+        assert srv_conf.certificate_chain == ((ee0_crt, ca1_crt), ee0_key)
+
+    def test_cli_conf(self, cli_conf, trust_store):
+        assert cli_conf.trust_store == trust_store
+        assert cli_conf.validate_certificates == True
 
 
 class TestTLSCommunication(_TestCommunicationBase):
@@ -400,6 +401,20 @@ class TestTLSCommunication(_TestCommunicationBase):
             highest_supported_version=version,
             validate_certificates=True)
 
+    @pytest.fixture(params=[10, 100, 1000, 10000, 16384 - 1])
+    def step(self, request):
+        return request.param
+
+    def echo(self, sock):
+        conn, addr = sock.accept()
+        block(conn.do_handshake)
+        while True:
+            data = block(conn.recv, 20 * 1024)
+            if data == self.CLOSE_MESSAGE:
+                break
+            amt = block(conn.send, data)
+            assert len(data) == amt
+
     def test_server_hostname_fails_verification(
             self, server, cli_conf, address):
         ctx = ClientContext(cli_conf)
@@ -410,7 +425,6 @@ class TestTLSCommunication(_TestCommunicationBase):
         with pytest.raises(TLSError):
             block(sock.do_handshake)
 
-    @pytest.mark.parametrize("step", [10, 100, 1000, 10000, 16384 - 1])
     def test_client_server(self, client, buffer, step):
         received = bytearray()
         for idx in range(0, len(buffer), step):
@@ -449,12 +463,24 @@ class TestDTLSCommunication(_TestCommunicationBase):
             highest_supported_version=version,
             validate_certificates=True)
 
-    @pytest.mark.parametrize("step", [10, 100, 1000, 5000])
-    def test_client_server(self, client, address, buffer, step):
-        reveived = bytearray()
-        for idx in range(0, len(buffer), step):
-            view = memoryview(buffer[idx:idx + step])
-            amt = block(client.send, view)
-            assert amt == len(view)
-            data = block(client.recv, 20 * 2014)
-            assert data == view
+    @pytest.fixture(params=[10, 100, 1000, 5000])
+    def step(self, request):
+        return request.param
+
+    def echo(self, sock):
+        cli, addr = sock.accept()
+        cli.setcookieparam(addr[0].encode("ascii"))
+        with pytest.raises(_tls.HelloVerifyRequest):
+            block(cli.do_handshake)
+
+        cli, addr = cli.accept()
+        cli.setcookieparam(addr[0].encode("ascii"))
+        block(cli.do_handshake)
+        while True:
+            data = block(cli.recv, 4096)
+            if data == self.CLOSE_MESSAGE:
+                break
+            # We must use `send()` instead of `sendto()` because the
+            # DTLS socket is connected.
+            amt = block(cli.send, data)
+            assert len(data) == amt

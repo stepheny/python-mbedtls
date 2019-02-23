@@ -391,7 +391,7 @@ cdef extern from "mbedtls/ssl_cookie.h" nogil:
     mbedtls_ssl_cookie_check_t mbedtls_ssl_cookie_check
 
 
-cdef class DTLSCookie:
+cdef class _DTLSCookie:
     cdef mbedtls_ssl_cookie_ctx _ctx
 
 
@@ -415,9 +415,9 @@ cdef class TLSConfiguration(_BaseConfiguration):
 
 
 cdef class DTLSConfiguration(_BaseConfiguration):
-    cdef DTLSCookie _cookie
+    cdef _DTLSCookie _cookie
     cdef _set_anti_replay(self, mode)
-    cdef _set_cookie(self, DTLSCookie cookie)
+    cdef _set_cookie(self, _DTLSCookie cookie)
 
 
 cdef class _TLSSession:

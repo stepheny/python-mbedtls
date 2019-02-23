@@ -254,7 +254,7 @@ class Purpose(IntEnum):
 _DEFAULT_VALUE = object()
 
 
-cdef class DTLSCookie:
+cdef class _DTLSCookie:
     """DTLS cookie."""
 
     def __cinit__(self):
@@ -661,7 +661,6 @@ cdef class DTLSConfiguration(_BaseConfiguration):
         # badmac_limit
         # handshake_timeout
         sni_callback=None,
-        cookie=None,
     ):
         super().__init__(
             validate_certificates=validate_certificates,
@@ -675,6 +674,9 @@ cdef class DTLSConfiguration(_BaseConfiguration):
             _transport=_tls.MBEDTLS_SSL_TRANSPORT_DATAGRAM,
         )
         self._set_anti_replay(anti_replay)
+        # For security reasons, we do not make cookie optional here.
+        cdef _tls._DTLSCookie cookie = _tls._DTLSCookie()
+        cookie.generate()
         self._set_cookie(cookie)
 
     @property
@@ -700,7 +702,7 @@ cdef class DTLSConfiguration(_BaseConfiguration):
         cdef unsigned int enabled = _tls.MBEDTLS_SSL_ANTI_REPLAY_ENABLED
         return True if self._ctx.anti_replay == enabled else False
 
-    cdef _set_cookie(self, _tls.DTLSCookie cookie):
+    cdef _set_cookie(self, _tls._DTLSCookie cookie):
         """Register callbacks for DTLS cookies (server only)."""
         self._cookie = cookie
         if cookie is None:
@@ -718,10 +720,6 @@ cdef class DTLSConfiguration(_BaseConfiguration):
                 &self._cookie._ctx,
             )
 
-    @property
-    def cookie(self):
-        return self._cookie
-
     def update(
         self,
         validate_certificates=_DEFAULT_VALUE,
@@ -733,7 +731,6 @@ cdef class DTLSConfiguration(_BaseConfiguration):
         trust_store=_DEFAULT_VALUE,
         sni_callback=_DEFAULT_VALUE,
         anti_replay=_DEFAULT_VALUE,
-        cookie=_DEFAULT_VALUE,
     ):
         """Create a new ``DTLSConfiguration``.
 
@@ -768,9 +765,6 @@ cdef class DTLSConfiguration(_BaseConfiguration):
         if anti_replay is _DEFAULT_VALUE:
             anti_replay = self.anti_replay
 
-        if cookie is _DEFAULT_VALUE:
-            cookie = self.cookie
-
         return self.__class__(
             validate_certificates=validate_certificates,
             certificate_chain=certificate_chain,
@@ -781,7 +775,6 @@ cdef class DTLSConfiguration(_BaseConfiguration):
             trust_store=trust_store,
             sni_callback=sni_callback,
             anti_replay=anti_replay,
-            cookie=cookie,
         )
 
 
@@ -1282,12 +1275,13 @@ cdef class TLSWrappedSocket:
         self._buffer.consume_outgoing(amt)
         self._socket.sendall(encrypted)
 
-    def sendto(self, message, flags, address=None):
-        if address is None:
-            address, flags = flags, 0
+    def sendto(self, message, flags=0, address=None):
         amt = self._buffer.write(message)
         encrypted = self._buffer.peek_outgoing(amt)
-        self._socket.sendto(encrypted, flags, address)
+        if address:
+            self._socket.sendto(encrypted, flags, address)
+        else:
+            self._socket.sendto(encrypted, flags)
         self._buffer.consume_outgoing(amt)
         return len(message)
 
