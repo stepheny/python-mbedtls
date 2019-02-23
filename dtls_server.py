@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import datetime as dt
-import faulthandler
 import socket
 import struct
 
@@ -10,8 +9,6 @@ from mbedtls.pk import RSA, ECC
 from mbedtls.x509 import BasicConstraints, CRT, CSR
 from mbedtls.tls import *
 from mbedtls.tls import _enable_debug_output, _set_debug_level
-
-faulthandler.enable()
 
 now = dt.datetime.utcnow()
 digestmod = hashlib.sha256

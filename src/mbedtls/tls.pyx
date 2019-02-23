@@ -806,9 +806,6 @@ cdef class _BaseContext:
     def __cinit__(self):
         """Initialize an `ssl_context`."""
         _tls.mbedtls_ssl_init(&self._ctx)
-        # XXX DTLS only!
-        # XXX Properly pack the context in a class to be
-        # XXX consistent with the rest.
         _tls.mbedtls_ssl_set_timer_cb(
             &self._ctx,
             &self._timer,
@@ -852,7 +849,6 @@ cdef class _BaseContext:
         elif read == _tls.MBEDTLS_ERR_SSL_WANT_WRITE:
             raise WantWriteError()
         elif read == _tls.MBEDTLS_ERR_SSL_CLIENT_RECONNECT:
-            # XXX Handle that properly.
             check_error(read)
         else:
             self._reset()
